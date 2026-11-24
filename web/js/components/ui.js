@@ -14,5 +14,7 @@ export function pagination(data) {
  const pages = Math.max(1, Math.ceil(data.total / data.limit));
  return `<div class="pagination"><span>${data.total ? `${(data.page-1)*data.limit+1}–${Math.min(data.page*data.limit,data.total)} из ${number(data.total)}` : 'Нет записей'}</span><div><button class="icon-button" data-pagination="${data.page-1}" ${data.page<=1?'disabled':''} aria-label="Предыдущая страница">${icon('chevron-left')}</button><span>Страница ${data.page} из ${pages}</span><button class="icon-button" data-pagination="${data.page+1}" ${data.page>=pages?'disabled':''} aria-label="Следующая страница">${icon('chevron-right')}</button></div></div>`;
 }
-export function bookCover(title, id, small = false) { return `<span class="book-cover cover-${Number(id)%6} ${small?'mini':''}" aria-hidden="true"><span>${esc(title.slice(0,24))}</span><span class="cover-lines"></span></span>`; }
+export function bookCover(title, id, small = false, author = '') {
+ return `<span class="book-cover cover-${Number(id)%6} ${small?'mini':''}" aria-hidden="true">${author?`<span class="cover-author">${esc(author)}</span>`:''}<span class="cover-title">${esc(title)}</span><span class="cover-ornament"></span><span class="cover-lines"></span></span>`;
+}
 export function status(loan) { return loan.returned_at ? '<span class="badge neutral">Возвращена</span>' : loan.overdue ? '<span class="badge danger"><span></span>Просрочена</span>' : '<span class="badge success"><span></span>На руках</span>'; }

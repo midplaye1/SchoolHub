@@ -6,3 +6,6 @@
 bin
 node_modules
 *.log
+
+# Local snapshots include database and private configuration.
+backups/

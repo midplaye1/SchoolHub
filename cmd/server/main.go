@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"libraryhub/internal/auth"
 	"libraryhub/internal/config"
 	"libraryhub/internal/handler"
 	"libraryhub/internal/repository"
@@ -49,6 +50,9 @@ func run() error {
 		}
 	}
 	if err = migrations.Apply(startup, pool); err != nil {
+		return err
+	}
+	if err = (&auth.Auth{DB: pool}).Bootstrap(startup); err != nil {
 		return err
 	}
 	repo := repository.New(pool)

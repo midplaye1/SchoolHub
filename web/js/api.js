@@ -10,7 +10,7 @@ export async function api(path, options = {}) {
     if (response.status === 204) return null;
     let data;
     try { data = await response.json(); } catch { throw new Error('Сервер вернул некорректный ответ'); }
-    if (!response.ok) throw new Error(data.error || 'Не удалось выполнить запрос');
+    if (!response.ok) { const error=new Error(data.error || 'Не удалось выполнить запрос');error.status=response.status;if(response.status===401&&path!=='/auth/login')window.dispatchEvent(new Event('libraryhub-session-expired'));throw error; }
     return data;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('Время ожидания истекло. Попробуйте ещё раз.');

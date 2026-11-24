@@ -1,13 +1,17 @@
 import { api, query } from './api.js';
-import { esc, icon, icons, number, date, localDay, toast, empty, pagination, bookCover, status } from './components/ui.js';
+import { esc, icon, icons, number, date, localDay, toast, empty, pagination, bookCover, status } from './components/ui.js?v=warm-library';
 
 const content = document.getElementById('content');
 const dialog = document.getElementById('modal');
 const modalContent = document.getElementById('modal-content');
-const pageNames = { dashboard:'Обзор библиотеки', books:'Каталог книг', readers:'Читатели', loans:'Выдачи и возвраты', stats:'Статистика' };
-const palette = ['#7774ee','#a7a0f5','#bdb7fb','#cfcafc','#e1dcfc','#8abec1','#aacfc0','#e6b1be'];
+const pageNames = { dashboard:'Обзор библиотеки', books:'Каталог книг', readers:'Читатели', loans:'Выдачи и возвраты', stats:'Статистика', accounts:'Пользователи' };
+const palette = ['#a45e49','#859076','#c8a472','#6e898a','#bf8d7d','#aaa08c','#8c7660','#d1bdaa'];
+let catalogView='shelf';
+try { catalogView=localStorage.getItem('libraryhub-catalog-view')||'shelf'; } catch {}
 let page = 'dashboard', pageNumber = 1, loanTab = 'active', renderID = 0, modalID = 0;
 let filters = {}, records = new Map(), charts = [];
+let currentUser = null;
+const isReader = () => currentUser?.role === 'reader';
 let activeTheme;
 try { activeTheme = localStorage.getItem('libraryhub-theme'); } catch {}
 if (activeTheme === 'dark') document.documentElement.dataset.theme = 'dark';
@@ -23,7 +27,7 @@ document.getElementById('theme').onclick = () => {
  document.documentElement.dataset.theme = theme;
  try { localStorage.setItem('libraryhub-theme', theme); } catch {}
  updateThemeButton(); charts.forEach(chart => {
-   const c = theme === 'dark' ? '#929fb7' : '#94a3b8';
+   const c = theme === 'dark' ? '#b4a493' : '#897b6b';
    if (chart.options.scales?.x) chart.options.scales.x.ticks.color = c;
    if (chart.options.scales?.y) chart.options.scales.y.ticks.color = c;
    chart.update();
@@ -81,14 +85,14 @@ async function dashboard(id, statistics = false) {
 }
 function chartOptions() {
  const dark = document.documentElement.dataset.theme==='dark';
- return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{backgroundColor:dark?'#e8edf6':'#20283e',titleColor:dark?'#0f172a':'#fff',bodyColor:dark?'#0f172a':'#fff',padding:11,displayColors:false}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:dark?'#929fb7':'#94a3b8',font:{family:'Inter',size:9}}},y:{beginAtZero:true,border:{display:false,dash:[4,4]},grid:{color:dark?'#2a3143':'#f0f2f7',tickLength:0},ticks:{precision:0,padding:12,color:dark?'#929fb7':'#94a3b8',font:{family:'Inter',size:9}}}}};
+ return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{backgroundColor:dark?'#e8edf6':'#20283e',titleColor:dark?'#0f172a':'#fff',bodyColor:dark?'#0f172a':'#fff',padding:11,displayColors:false}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:dark?'#b4a493':'#897b6b',font:{family:'Inter',size:9}}},y:{beginAtZero:true,border:{display:false,dash:[4,4]},grid:{color:dark?'#3d342c':'#eae3d9',tickLength:0},ticks:{precision:0,padding:12,color:dark?'#b4a493':'#897b6b',font:{family:'Inter',size:9}}}}};
 }
 function drawMonths(items) {
  const canvas = document.getElementById('loans-chart');
  const labels = items.map(x=>new Date(`${x.label}-02`).toLocaleDateString('ru-RU',{month:'short'}));
  if (!window.Chart) { fallbackBars(canvas,items.map((x,i)=>({...x,label:labels[i]}))); return; }
- const gradient = canvas.getContext('2d').createLinearGradient(0,0,0,250); gradient.addColorStop(0,'#818cf833'); gradient.addColorStop(1,'#818cf800');
- charts.push(new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Выдач',data:items.map(x=>x.value),borderColor:'#7774ee',backgroundColor:gradient,borderWidth:2.5,tension:.4,fill:true,pointRadius:3,pointBorderWidth:2,pointBackgroundColor:'#fff',pointBorderColor:'#7774ee',pointHoverRadius:5}]},options:chartOptions()}));
+ const gradient = canvas.getContext('2d').createLinearGradient(0,0,0,250); gradient.addColorStop(0,'#b8755830'); gradient.addColorStop(1,'#b8755800');
+ charts.push(new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Выдач',data:items.map(x=>x.value),borderColor:'#a45e49',backgroundColor:gradient,borderWidth:2.5,tension:.4,fill:true,pointRadius:3,pointBorderWidth:2,pointBackgroundColor:'#fff',pointBorderColor:'#a45e49',pointHoverRadius:5}]},options:chartOptions()}));
 }
 function drawGenres(items) {
  const canvas = document.getElementById('genre-chart');
@@ -103,7 +107,7 @@ function drawPopularGenres(items) {
  const canvas = document.getElementById('popular-genres-chart');
  if (!window.Chart) { fallbackBars(canvas,items);return; }
  const options = chartOptions();options.indexAxis='y';options.scales.x.ticks.precision=0;options.scales.y.grid.display=false;
- charts.push(new Chart(canvas,{type:'bar',data:{labels:items.map(x=>x.label),datasets:[{label:'Выдач',data:items.map(x=>x.value),backgroundColor:'#9994f1',borderRadius:4,maxBarThickness:17}]},options}));
+ charts.push(new Chart(canvas,{type:'bar',data:{labels:items.map(x=>x.label),datasets:[{label:'Выдач',data:items.map(x=>x.value),backgroundColor:'#b78060',borderRadius:4,maxBarThickness:17}]},options}));
 }
 function fallbackBars(canvas,items) {
  const max = Math.max(...items.map(x=>x.value),1);
@@ -115,8 +119,8 @@ async function books(id) {
  const [data,genres] = await Promise.all([api(`/books?${query({...filters,page:pageNumber,limit:10})}`),api('/options/genres')]);
  if (id!==renderID) return;
  records = new Map(data.items.map(b=>[b.id,b]));
- content.innerHTML = heading('Каталог книг','Каждая книга — начало новой истории.',addButton('add-book','Добавить книгу'),'КНИЖНЫЙ ФОНД')+
- `<section class="panel"><div class="toolbar"><label class="search-input">${icon('search')}<input data-filter="search" value="${esc(filters.search)}" placeholder="Поиск по названию…" aria-label="Поиск по названию"></label><label class="search-input author-search">${icon('pen-line')}<input data-filter="author" value="${esc(filters.author)}" placeholder="Автор" aria-label="Поиск по автору"></label><select data-filter="genre" aria-label="Жанр">${optionList(genres,filters.genre,'Все жанры')}</select><select data-filter="availability" aria-label="Доступность">${optionList(['available','unavailable'],filters.availability,'Любая доступность').replace('>available<','>Доступны<').replace('>unavailable<','>Нет в наличии<')}</select><select data-filter="sort_order" aria-label="Сортировка">${[['title:asc','Название: А–Я'],['title:desc','Название: Я–А'],['author:asc','Автор: А–Я'],['author:desc','Автор: Я–А'],['year:desc','Сначала новые'],['year:asc','Сначала старые']].map(([v,l])=>`<option value="${v}" ${v===`${filters.sort||'title'}:${filters.order||'asc'}`?'selected':''}>${l}</option>`).join('')}</select></div>${data.items.length?`<div class="table-wrap"><table><thead><tr><th>Название и автор</th><th>Жанр</th><th>Год</th><th>Экземпляры</th><th>Доступность</th><th>Действия</th></tr></thead><tbody>${data.items.map(b=>`<tr><td><button class="row-title book-cell" data-action="view-book" data-id="${b.id}">${bookCover(b.title,b.id)}<span><strong>${esc(b.title)}</strong><small>${esc(b.author)}</small></span></button></td><td><span class="badge neutral">${esc(b.genre)}</span></td><td class="text-muted">${b.year}</td><td><strong>${b.available_copies}</strong><span class="text-muted"> / ${b.total_copies}</span></td><td>${b.available_copies?'<span class="badge success"><span></span>Доступна</span>':'<span class="badge danger"><span></span>Нет в наличии</span>'}</td><td><div class="actions"><button class="icon-button" data-action="issue-book" data-id="${b.id}" ${b.available_copies?'':'disabled'} title="Выдать книгу" aria-label="Выдать книгу">${icon('arrow-up-right')}</button><button class="icon-button" data-action="edit-book" data-id="${b.id}" title="Редактировать" aria-label="Редактировать книгу">${icon('pencil')}</button><button class="icon-button" data-action="delete-book" data-id="${b.id}" title="Удалить" aria-label="Удалить книгу">${icon('trash-2')}</button></div></td></tr>`).join('')}</tbody></table></div>`:empty('Книги не найдены',Object.values(filters).some(Boolean)?'Попробуйте изменить поисковый запрос или фильтры.':'Добавьте книгу, чтобы пополнить библиотеку.')}${pagination(data)}</section>`;
+ content.innerHTML = heading('Ваша следующая история','Знакомые авторы, неожиданные открытия и книги, к которым хочется возвращаться.',addButton('add-book','Добавить книгу'),'ШКОЛЬНАЯ БИБЛИОТЕКА')+
+ `<section class="panel catalog-panel"><div class="catalog-section-heading"><div><h2>На книжной полке</h2><p>${number(data.total)} наименований в каталоге</p></div><div class="catalog-view" role="group" aria-label="Вид каталога"><button type="button" class="icon-button" data-catalog-view="shelf" aria-pressed="${catalogView==='shelf'}" aria-label="Книжная полка">${icon('layout-grid')}</button><button type="button" class="icon-button" data-catalog-view="table" aria-pressed="${catalogView==='table'}" aria-label="Таблица">${icon('list')}</button></div></div><div class="toolbar"><label class="search-input">${icon('search')}<input data-filter="search" value="${esc(filters.search)}" placeholder="Поиск по названию…" aria-label="Поиск по названию"></label><label class="search-input author-search">${icon('pen-line')}<input data-filter="author" value="${esc(filters.author)}" placeholder="Автор" aria-label="Поиск по автору"></label><select data-filter="genre" aria-label="Жанр">${optionList(genres,filters.genre,'Все жанры')}</select><select data-filter="availability" aria-label="Доступность">${optionList(['available','unavailable'],filters.availability,'Любая доступность').replace('>available<','>Доступны<').replace('>unavailable<','>Нет в наличии<')}</select><select data-filter="sort_order" aria-label="Сортировка">${[['title:asc','Название: А–Я'],['title:desc','Название: Я–А'],['author:asc','Автор: А–Я'],['author:desc','Автор: Я–А'],['year:desc','Сначала новые'],['year:asc','Сначала старые']].map(([v,l])=>`<option value="${v}" ${v===`${filters.sort||'title'}:${filters.order||'asc'}`?'selected':''}>${l}</option>`).join('')}</select></div>${data.items.length?(catalogView==='shelf'?bookShelf(data.items):`<div class="table-wrap"><table><thead><tr><th>Название и автор</th><th>Жанр</th><th>Год</th><th>Экземпляры</th><th>Доступность</th><th>Действия</th></tr></thead><tbody>${data.items.map(b=>`<tr><td><button class="row-title book-cell" data-action="view-book" data-id="${b.id}">${bookCover(b.title,b.id)}<span><strong>${esc(b.title)}</strong><small>${esc(b.author)}</small></span></button></td><td><span class="badge neutral">${esc(b.genre)}</span></td><td class="text-muted">${b.year}</td><td><strong>${b.available_copies}</strong><span class="text-muted"> / ${b.total_copies}</span></td><td>${b.available_copies?'<span class="badge success"><span></span>Доступна</span>':'<span class="badge danger"><span></span>Нет в наличии</span>'}</td><td><div class="actions"><button class="icon-button" data-action="issue-book" data-id="${b.id}" ${b.available_copies?'':'disabled'} title="Выдать книгу" aria-label="Выдать книгу">${icon('arrow-up-right')}</button><button class="icon-button" data-action="edit-book" data-id="${b.id}" title="Редактировать" aria-label="Редактировать книгу">${icon('pencil')}</button><button class="icon-button" data-action="delete-book" data-id="${b.id}" title="Удалить" aria-label="Удалить книгу">${icon('trash-2')}</button></div></td></tr>`).join('')}</tbody></table></div>`):empty('Книги не найдены',Object.values(filters).some(Boolean)?'Попробуйте изменить поисковый запрос или фильтры.':'Добавьте книгу, чтобы пополнить библиотеку.')}${pagination(data)}</section>`;
  icons();
 }
 async function readers(id) {
@@ -136,10 +140,12 @@ async function loans(id) {
  icons();
 }
 async function render({quiet = false, focus = null} = {}) {
+ if (!currentUser) return;
  const id = ++renderID;
  if (!quiet) { charts.forEach(c=>c.destroy()); charts=[];content.innerHTML=skeleton(); }
  try {
-  await ({dashboard:()=>dashboard(id),stats:()=>dashboard(id,true),books:()=>books(id),readers:()=>readers(id),loans:()=>loans(id)})[page]();
+  await ({dashboard:()=>dashboard(id),stats:()=>dashboard(id,true),books:()=>books(id),readers:()=>readers(id),loans:()=>loans(id),accounts:()=>accounts(id)})[page]();
+  if(id===renderID) applyPermissions();
   if(focus && id===renderID) { const input=content.querySelector(`[data-filter="${focus.key}"]`);if(input){input.focus();if(input.setSelectionRange)input.setSelectionRange(focus.position,focus.position);} }
  } catch (error) {
   if (id!==renderID) return;
@@ -147,8 +153,9 @@ async function render({quiet = false, focus = null} = {}) {
  }
 }
 function navigate() {
+ if (!currentUser) return;
  const next = location.hash.slice(1).split('?')[0] || 'dashboard';
- clearTimeout(searchTimer);page = pageNames[next]?next:'dashboard';pageNumber=1;filters={};closeSidebar();
+ clearTimeout(searchTimer);page = pageNames[next]?next:'dashboard';if(isReader()&&!['books','loans'].includes(page)){page='books';history.replaceState(null,'','#books');}pageNumber=1;filters={};closeSidebar();
  document.querySelectorAll('nav [data-page]').forEach(a=>{a.classList.toggle('active',a.dataset.page===page);if(a.dataset.page===page)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
  document.getElementById('crumb').textContent = page==='dashboard'?'Обзор':pageNames[page];
  document.title=`${pageNames[page]} · LibraryHub`;
@@ -169,6 +176,7 @@ content.addEventListener('change',event=>{
  pageNumber=1;render({quiet:true});
 });
 content.addEventListener('click',event=>{
+ const view=event.target.closest('[data-catalog-view]');if(view){catalogView=view.dataset.catalogView;try{localStorage.setItem('libraryhub-catalog-view',catalogView);}catch{}render({quiet:true});return;}
  const pager=event.target.closest('[data-pagination]');if(pager){pageNumber=Number(pager.dataset.pagination);render({quiet:true});return;}
  const tab=event.target.closest('[data-tab]');if(tab){loanTab=tab.dataset.tab;pageNumber=1;render({quiet:true});return;}
  const button=event.target.closest('[data-action]');if(!button)return;
@@ -176,9 +184,12 @@ content.addEventListener('click',event=>{
  handleAction(button.dataset.action,id).catch(e=>toast(e.message,true));
 });
 async function handleAction(action,id) {
+ if(isReader()&&!['retry','view-book'].includes(action))return;
  switch(action){
   case 'retry':return render();
+  case 'change-role':return changeRole(records.get(id));
   case 'add-book':return openBook();
+  case 'add-librarian':return openAccount();
   case 'edit-book':return openBook(await api(`/books/${id}`));
   case 'view-book':return viewBook(id);
   case 'delete-book':return confirmDelete('books',id,records.get(id)?.title);
@@ -228,7 +239,8 @@ function openReader(r={}) {
 }
 async function viewBook(id) {
  const b=await api(`/books/${id}`);
- modal('Карточка книги','',`<div class="modal-body"><div class="detail-book">${bookCover(b.title,b.id)}<div><h3>${esc(b.title)}</h3><p>${esc(b.author)}</p><span class="badge ${b.available_copies?'success':'danger'}">${b.available_copies?'Доступна для выдачи':'Нет свободных экземпляров'}</span></div></div><dl class="detail-meta"><div><dt>Жанр</dt><dd>${esc(b.genre)}</dd></div><div><dt>Год издания</dt><dd>${b.year}</dd></div><div><dt>Доступно / всего</dt><dd>${b.available_copies} / ${b.total_copies}</dd></div><div><dt>ISBN</dt><dd>${esc(b.isbn)||'Не указан'}</dd></div><div><dt>Добавлена</dt><dd>${date(b.created_at)}</dd></div></dl><p class="description">${esc(b.description)||'Описание пока не добавлено.'}</p></div>`,`<div class="modal-footer"><button class="button" id="detail-edit">${icon('pencil')}Редактировать</button><button class="button primary" id="detail-issue" ${b.available_copies?'':'disabled'}>${icon('arrow-up-right')}Выдать книгу</button></div>`);
+ modal('Карточка книги','',`<div class="modal-body"><div class="detail-book">${bookCover(b.title,b.id,false,b.author)}<div><h3>${esc(b.title)}</h3><p>${esc(b.author)}</p><span class="badge ${b.available_copies?'success':'danger'}">${b.available_copies?'Доступна для выдачи':'Нет свободных экземпляров'}</span></div></div><dl class="detail-meta"><div><dt>Жанр</dt><dd>${esc(b.genre)}</dd></div><div><dt>Год издания</dt><dd>${b.year}</dd></div><div><dt>Доступно / всего</dt><dd>${b.available_copies} / ${b.total_copies}</dd></div><div><dt>ISBN</dt><dd>${esc(b.isbn)||'Не указан'}</dd></div><div><dt>Добавлена</dt><dd>${date(b.created_at)}</dd></div></dl><p class="description">${esc(b.description)||'Описание пока не добавлено.'}</p></div>`,`<div class="modal-footer"><button class="button" id="detail-edit">${icon('pencil')}Редактировать</button><button class="button primary" id="detail-issue" ${b.available_copies?'':'disabled'}>${icon('arrow-up-right')}Выдать книгу</button></div>`);
+ if(isReader()){modalContent.querySelector('.modal-footer')?.remove();return;}
  document.getElementById('detail-edit').onclick=()=>openBook(b);
  document.getElementById('detail-issue').onclick=()=>openLoan(id);
 }
@@ -237,6 +249,7 @@ async function viewReader(id) {
  const token=modal(esc(r.name),`${esc(r.class)} класс · В библиотеке с ${date(r.created_at)}`,`<div class="modal-body"><h2>Книги на руках <span class="text-muted">(${data.total})</span></h2><div id="reader-loans">${readerLoans(data)}</div><div id="reader-loans-pager"></div></div>`,`<div class="modal-footer"><button class="button" id="detail-edit">${icon('pencil')}Редактировать</button><button class="button primary" id="detail-issue">${icon('book-plus')}Выдать книгу</button></div>`);
  document.getElementById('detail-edit').onclick=()=>openReader(r);
  document.getElementById('detail-issue').onclick=()=>openLoan(null,id);
+ const accountButton=document.createElement('button');accountButton.className='button';accountButton.textContent='Создать аккаунт';accountButton.onclick=()=>openAccount(r);modalContent.querySelector('.modal-footer').prepend(accountButton);
  const wire=(result)=>{
   const area=document.getElementById('reader-loans');area.innerHTML=readerLoans(result);
   document.getElementById('reader-loans-pager').innerHTML=result.total>result.limit?pagination(result):'';
@@ -296,4 +309,101 @@ function setupPicker(kind,selectedID,token) {
  select.onchange=()=>{selection=objects.get(Number(select.value))||null;};
  more.onclick=()=>load(true);load();
 }
-navigate();
+bootAuth();
+
+function applyPermissions() {
+ if(!isReader())return;
+ document.querySelectorAll('nav [data-page]').forEach(a=>a.hidden=!['books','loans'].includes(a.dataset.page));
+ content.querySelectorAll('[data-action]').forEach(b=>{if(b.dataset.action==='view-reader'){const label=document.createElement('span');label.className='reader-cell';label.innerHTML=b.innerHTML;b.replaceWith(label);}else if(!['view-book','retry'].includes(b.dataset.action))b.remove();});
+ content.querySelectorAll('.heading-actions,.actions').forEach(e=>e.remove());
+ // Remove action/return columns rather than leaving an empty administrative table.
+ content.querySelectorAll('table').forEach(table=>{
+  const heads=[...table.querySelectorAll('thead th')];
+  const index=heads.findIndex(h=>['Действия','Возврат'].includes(h.textContent.trim()));
+  if(index>=0)table.querySelectorAll('tr').forEach(row=>row.children[index]?.remove());
+ });
+ if(page==='loans') {document.getElementById('crumb').textContent='Мои книги';document.title='Мои книги · LibraryHub';content.querySelector('h1').textContent='Мои книги';content.querySelector('.page-heading p').textContent='Ваши выдачи, сроки возврата и история чтения.';}
+}
+function showLogin(message='') {
+ closeAccountMenu();currentUser=null;++renderID;charts.forEach(c=>c.destroy());charts=[];dialog.close();
+ document.body.classList.add('signed-out');content.innerHTML='';
+ let screen=document.getElementById('login-screen');if(!screen){screen=document.createElement('section');screen.id='login-screen';document.body.append(screen);}
+ screen.innerHTML=`<div class="login-card"><div class="eyebrow">LIBRARYHUB</div><h1>С возвращением</h1><p>Войдите, чтобы продолжить свою историю.</p><form id="login-form"><div class="form-error" role="alert">${esc(message)}</div><label class="field">Логин<input name="login" autocomplete="username" required maxlength="64" autofocus></label><label class="field">Пароль<input name="password" type="password" autocomplete="current-password" required maxlength="72"></label><button class="button primary" type="submit">Войти в библиотеку</button></form><p class="login-hint">Нет аккаунта? <button type="button" class="button ghost" id="register-link">Зарегистрироваться</button></p></div>`;
+ screen.querySelector('#register-link').onclick=showRegistration;
+ screen.querySelector('form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('button');button.disabled=true;try{currentUser=await api('/auth/login',{method:'POST',body:Object.fromEntries(new FormData(form))});finishLogin();}catch(e){form.querySelector('.form-error').textContent=e.message;}finally{button.disabled=false;}};
+}
+function finishLogin() {
+ document.getElementById('login-screen')?.remove();document.body.classList.remove('signed-out');
+ if(!document.querySelector('nav [data-page=accounts]')){const link=document.createElement('a');link.href='#accounts';link.dataset.page='accounts';link.innerHTML=`${icon('shield-check')}Пользователи`;document.querySelector('nav').append(link);}
+ document.querySelectorAll('nav [data-page]').forEach(a=>a.hidden=isReader()&&!['books','loans'].includes(a.dataset.page));
+ const loansLink=document.querySelector('nav [data-page=loans]');loansLink.innerHTML=`${icon('arrow-left-right')}${isReader()?'Мои книги':'Выдачи и возвраты'}<span id="loan-count" class="nav-count" hidden></span>`;
+ document.querySelector('.topbar .avatar').textContent=currentUser.login[0].toUpperCase();
+ const menu=document.getElementById('account-menu');
+ menu.innerHTML=`<div class="account-menu-profile" role="presentation"><span class="avatar">${esc(currentUser.login[0].toUpperCase())}</span><div><strong>${esc(currentUser.login)}</strong><small>${isReader()?'Читатель':'Библиотекарь'}</small></div></div><div class="account-menu-actions" role="presentation">${isReader()?'':`<button type="button" role="menuitem" id="new-librarian">${icon('user-plus')}Новый библиотекарь</button>`}<button type="button" role="menuitem" id="logout">${icon('log-out')}Выйти / сменить аккаунт</button></div>`;
+ document.getElementById('new-librarian')?.addEventListener('click',()=>{closeAccountMenu();openAccount();});
+ document.getElementById('logout').onclick=async()=>{const button=document.getElementById('logout');button.disabled=true;try{await api('/auth/logout',{method:'POST',body:{}});closeAccountMenu();showLogin();}catch(e){toast(e.message,true);}finally{button.disabled=false;}};
+ icons();
+ navigate();
+}
+function openAccount(reader=null) {
+ modal('Создать аккаунт',reader?`${esc(reader.name)} · Читатель`:'Роль: Библиотекарь',formBody(field('login','Логин *','','text','required minlength="3" maxlength="64" pattern="[a-zA-Z0-9_.-]+" autocomplete="off"',true)+field('password','Пароль *','','password','required minlength="10" maxlength="72" autocomplete="new-password"',true),'Передайте логин и пароль владельцу аккаунта лично.'));
+ submitForm(data=>api('/accounts',{method:'POST',body:{...data,role:reader?'reader':'librarian',reader_id:reader?.id??null}}),'Аккаунт создан');
+}
+async function bootAuth() {
+ document.body.classList.add('signed-out');
+ try{currentUser=await api('/auth/me');finishLogin();}catch(e){showLogin(e.status===401?'':e.message);}
+}
+window.addEventListener('libraryhub-session-expired',()=>{if(currentUser)showLogin('Сессия истекла. Войдите снова.');});
+
+
+function showRegistration() {
+ const screen=document.getElementById('login-screen');
+ screen.innerHTML=`<div class="login-card"><div class="eyebrow">LIBRARYHUB</div><h1>Стать читателем</h1><p>Создайте аккаунт для каталога и своих выдач.</p><form id="registration-form"><div class="form-error" role="alert"></div>${field('name','ФИО *','','text','required minlength="2" maxlength="200" autocomplete="name"')}${field('class','Класс *','','text','required maxlength="20" placeholder="Например, 9А"')}${field('login','Логин *','','text','required minlength="3" maxlength="64" pattern="[a-zA-Z0-9_.-]+" autocomplete="username"')}<small>Латинские буквы, цифры, точка, дефис или подчёркивание.</small>${field('password','Пароль *','','password','required minlength="10" maxlength="72" autocomplete="new-password"')}${field('confirmation','Повторите пароль *','','password','required autocomplete="new-password"')}<button class="button primary" type="submit">Зарегистрироваться</button></form><p class="login-hint">Уже есть аккаунт? <button class="button ghost" id="back-login" type="button">Войти</button></p></div>`;
+ screen.querySelector('#back-login').onclick=()=>showLogin();
+ screen.querySelector('form').onsubmit=async event=>{
+  event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]'),error=form.querySelector('.form-error'),data=Object.fromEntries(new FormData(form));error.textContent='';
+  if(data.password!==data.confirmation){error.textContent='Пароли не совпадают';return;}delete data.confirmation;button.disabled=true;
+  try{await api('/auth/register',{method:'POST',body:data});showLogin();document.querySelector('#login-form [name=login]').value=data.login;toast('Аккаунт создан. Теперь войдите с вашим паролем.');}catch(e){error.textContent=e.message;}finally{button.disabled=false;}
+ };
+}
+async function accounts(id) {
+ const data=await api(`/accounts?${query({search:filters.search,page:pageNumber})}`);if(id!==renderID)return;
+ records=new Map(data.items.map(u=>[u.id,u]));
+ content.innerHTML=heading('Пользователи','Аккаунты и права доступа к библиотеке.',addButton('add-librarian','Новый библиотекарь'))+`<section class="panel"><div class="toolbar"><label class="search-input">${icon('search')}<input data-filter="search" value="${esc(filters.search)}" placeholder="Поиск по логину или ФИО…" aria-label="Поиск пользователей"></label></div>${data.items.length?`<div class="table-wrap"><table><thead><tr><th>Пользователь</th><th>Читатель</th><th>Роль</th><th>Действие</th></tr></thead><tbody>${data.items.map(u=>`<tr><td>${esc(u.login)}${u.id===currentUser.id?' (вы)':''}</td><td>${esc(u.name)||'—'}${u.class?` · ${esc(u.class)}`:''}${u.reader_id&&!u.reader_active?' · Профиль удалён':''}</td><td><span class="badge ${u.role==='librarian'?'success':'neutral'}">${u.role==='librarian'?'Библиотекарь':'Читатель'}</span></td><td>${u.reader_active?`<button class="button small" data-action="change-role" data-id="${u.id}">${u.role==='reader'?'Назначить библиотекарем':'Снять роль библиотекаря'}</button>`:'<span class="text-muted">Нет активного профиля читателя</span>'}</td></tr>`).join('')}</tbody></table></div>`:empty('Пользователи не найдены','Измените поисковый запрос.')}${pagination(data)}</section>`;icons();
+}
+function changeRole(user) {
+ if(!user)return;const role=user.role==='reader'?'librarian':'reader';
+ modal(role==='librarian'?'Назначить библиотекарем?':'Снять роль библиотекаря?',esc(user.login),formBody('',role==='librarian'?'Пользователь получит полный доступ к книгам, читателям, выдачам и управлению ролями. После изменения потребуется повторный вход.':'Пользователь сохранит профиль и историю чтения, но потеряет административный доступ. Все его сессии будут завершены.'));
+ submitForm(async()=>{await api(`/accounts/${user.id}/role`,{method:'PATCH',body:{role}});if(user.id===currentUser.id)showLogin('Ваша роль изменена. Войдите снова.');},'Роль пользователя обновлена');
+}
+
+function closeAccountMenu(restoreFocus=false) {
+ const trigger=document.getElementById('account-trigger');
+ document.getElementById('account-menu').hidden=true;trigger.setAttribute('aria-expanded','false');
+ if(restoreFocus)trigger.focus();
+}
+function openAccountMenu() {
+ if(!currentUser)return;
+ document.getElementById('account-menu').hidden=false;
+ document.getElementById('account-trigger').setAttribute('aria-expanded','true');
+ document.querySelector('#account-menu [role=menuitem]')?.focus();
+}
+document.getElementById('account-trigger').onclick=()=>{
+ if(document.getElementById('account-menu').hidden)openAccountMenu();else closeAccountMenu(true);
+};
+document.getElementById('account-trigger').addEventListener('keydown',event=>{
+ if(event.key==='ArrowDown'){event.preventDefault();openAccountMenu();}
+});
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('#account-dropdown'))closeAccountMenu();});
+document.addEventListener('focusin',event=>{if(!event.target.closest('#account-dropdown'))closeAccountMenu();});
+document.getElementById('account-dropdown').addEventListener('keydown',event=>{
+ if(event.key==='Escape'){event.preventDefault();closeAccountMenu(true);return;}
+ if(document.getElementById('account-menu').hidden)return;
+ const buttons=[...document.querySelectorAll('#account-menu [role=menuitem]')];const i=buttons.indexOf(document.activeElement);
+ let next;if(event.key==='ArrowDown')next=(i+1)%buttons.length;else if(event.key==='ArrowUp')next=(i-1+buttons.length)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;
+ if(next!==undefined){event.preventDefault();buttons[next]?.focus();}
+});
+
+function bookShelf(items) {
+ return `<div class="book-shelf">${items.map(b=>`<article class="shelf-card"><button class="shelf-cover-button" data-action="view-book" data-id="${b.id}" aria-label="Открыть книгу ${esc(b.title)}"><span class="shelf-genre">${esc(b.genre)}</span>${bookCover(b.title,b.id,false,b.author)}</button><div class="shelf-info"><button class="row-title" data-action="view-book" data-id="${b.id}"><h3>${esc(b.title)}</h3></button><p>${esc(b.author)}</p><div class="shelf-status"><span class="availability ${b.available_copies?'':'unavailable'}">${b.available_copies?'Есть в библиотеке':'Все экземпляры на руках'}</span><small>${b.available_copies} / ${b.total_copies}</small></div><div class="actions shelf-actions"><button class="button small" data-action="issue-book" data-id="${b.id}" ${b.available_copies?'':'disabled'}>${icon('arrow-up-right')}Выдать</button><button class="icon-button" data-action="edit-book" data-id="${b.id}" aria-label="Редактировать книгу">${icon('pencil')}</button><button class="icon-button" data-action="delete-book" data-id="${b.id}" aria-label="Удалить книгу">${icon('trash-2')}</button></div></div></article>`).join('')}</div>`;
+}

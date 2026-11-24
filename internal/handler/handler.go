@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"io"
+	"libraryhub/internal/auth"
 	security "libraryhub/internal/middleware"
 	"libraryhub/internal/model"
 	"libraryhub/internal/repository"
@@ -23,6 +24,7 @@ type Handler struct {
 
 func Router(repo *repository.Repository, svc *service.Service, webDir string, timeout time.Duration) http.Handler {
 	h := &Handler{repo, svc}
+	a := &auth.Auth{DB: repo.DB}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Logger, middleware.Recoverer, security.Security)
 	r.Route("/api", func(r chi.Router) {
@@ -33,6 +35,14 @@ func Router(repo *repository.Repository, svc *service.Service, webDir string, ti
 				next.ServeHTTP(w, r)
 			})
 		})
+		r.Use(a.Guard)
+		r.Post("/auth/login", a.Login)
+		r.Post("/auth/register", a.Register)
+		r.Get("/accounts", a.List)
+		r.Patch("/accounts/{id}/role", a.ChangeRole)
+		r.Post("/auth/logout", a.Logout)
+		r.Get("/auth/me", a.Me)
+		r.Post("/accounts", a.Create)
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			if err := repo.DB.Ping(r.Context()); err != nil {
 				write(w, 503, map[string]string{"error": "База данных недоступна"})
@@ -202,6 +212,13 @@ func (h *Handler) loans(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		fail(w, e)
 		return
+	}
+	if u := auth.Current(r.Context()); u.Role == "reader" {
+		if u.ReaderID == nil {
+			write(w, 403, map[string]string{"error": "Аккаунт не связан с читателем"})
+			return
+		}
+		f.ReaderID = *u.ReaderID
 	}
 	v, e := h.Repo.Loans(r.Context(), f)
 	respond(w, v, e)

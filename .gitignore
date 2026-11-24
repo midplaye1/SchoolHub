@@ -3,3 +3,6 @@ bin/
 *.log
 node_modules/
 playwright-report/
+
+# Local snapshots include database and private configuration.
+backups/
